@@ -39,7 +39,6 @@ return new class extends Migration
             $table->foreignId('primary_supplier_id')->nullable()->constrained('suppliers')->nullOnDelete();
             $table->string('code', 30)->unique();
             $table->string('name', 150)->index();
-            $table->string('image_path')->nullable();
             $table->unsignedDecimal('last_unit_cost', 15, 2)->default(0);
             $table->unsignedDecimal('current_stock', 15, 3)->default(0);
             $table->unsignedDecimal('minimum_stock', 15, 3)->default(0)->index();

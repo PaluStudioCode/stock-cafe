@@ -6,6 +6,7 @@ import {
     ReceiptText, ShieldCheck, Users, X
 } from 'lucide-vue-next';
 import Toast from '@/Components/Toast.vue';
+import { labelForValue } from '@/utilities/formatters';
 
 defineProps({ title: { type: String, default: 'CafeStock' } });
 
@@ -17,29 +18,23 @@ const role = computed(() => user.value?.role);
 
 const groups = computed(() => {
     const commonMonitoring = [
-        { label: 'Stok Bahan', href: route('monitoring.index', 'ingredients') },
-        { label: 'Stok Menipis', href: route('monitoring.index', 'low-stock') },
-        { label: 'Stok Habis', href: route('monitoring.index', 'out-of-stock') },
+        { label: 'Monitoring Stok', href: route('monitoring.index', 'ingredients') },
     ];
-    const ownerReports = [
-        ['Laporan Stok', 'stock'], ['Laporan Pembelian', 'purchases'], ['Laporan Produksi', 'production'],
-        ['Laporan Waste', 'waste'], ['Laporan Stock Movement', 'stock-movement'], ['Nilai Persediaan', 'inventory-value'],
-    ].map(([label, key]) => ({ label, href: route('reports.index', key) }));
 
     if (role.value === 'barista') {
         return [
-            { label: 'Dashboard', icon: Gauge, href: route('dashboard') },
+            { label: 'Dasbor', icon: Gauge, href: route('dashboard') },
             { label: 'Menu dan Resep', icon: Coffee, children: [
-                { label: 'Menu Item', href: route('menu.index', 'menu-items') },
+                { label: 'Menu', href: route('menu.index', 'menu-items') },
                 { label: 'Resep Menu', href: route('menu.index', 'recipe-items') },
             ] },
-            { label: 'Produksi', icon: ClipboardList, children: [{ label: 'Production Log', href: route('production-logs.index') }] },
+            { label: 'Produksi', icon: ClipboardList, children: [{ label: 'Catatan Produksi', href: route('production-logs.index') }] },
             { label: 'Monitoring Stok', icon: PackageSearch, children: commonMonitoring },
         ];
     }
 
     const base = [
-        { label: 'Dashboard', icon: Gauge, href: route('dashboard') },
+        { label: 'Dasbor', icon: Gauge, href: route('dashboard') },
         { label: 'Master Data', icon: Boxes, children: [
             { label: 'Kategori Bahan', href: route('data.index', 'ingredient-categories') },
             { label: 'Satuan', href: route('data.index', 'units') },
@@ -47,24 +42,24 @@ const groups = computed(() => {
             { label: 'Bahan Baku', href: route('data.index', 'ingredients') },
         ] },
         { label: 'Transaksi Stok', icon: ClipboardList, children: [
-            { label: 'Purchase Order', href: route('purchase-orders.index') },
-            { label: 'Production Log', href: route('production-logs.index') },
-            { label: 'Stock Usage', href: route('stock-usages.index') },
-            { label: 'Stock Adjustment', href: route('stock-adjustments.index') },
+            { label: 'Pesanan Pembelian', href: route('purchase-orders.index') },
+            { label: 'Catatan Produksi', href: route('production-logs.index') },
+            { label: 'Pemakaian Stok', href: route('stock-usages.index') },
+            { label: 'Penyesuaian Stok', href: route('stock-adjustments.index') },
         ] },
-        { label: 'Monitoring Stok', icon: PackageSearch, children: [...commonMonitoring, { label: 'Stock Movement', href: route('monitoring.index', 'stock-movements') }] },
-        { label: 'Laporan', icon: ReceiptText, children: role.value === 'owner' ? ownerReports : [{ label: 'Laporan Stok', href: route('reports.index', 'stock') }] },
+        { label: 'Monitoring Stok', icon: PackageSearch, children: [...commonMonitoring, { label: 'Riwayat Pergerakan Stok', href: route('monitoring.index', 'stock-movements') }] },
+        { label: 'Laporan', icon: ReceiptText, href: route('reports.index') },
     ];
 
     if (role.value === 'owner') {
         base.splice(2, 0, { label: 'Menu dan Resep', icon: Coffee, children: [
-            { label: 'Menu Item', href: route('menu.index', 'menu-items') },
+            { label: 'Menu', href: route('menu.index', 'menu-items') },
             { label: 'Resep Menu', href: route('menu.index', 'recipe-items') },
         ] });
         base.push({ label: 'Administrasi', icon: Users, children: [
             { label: 'Pengguna', href: route('admin.index', 'users') },
-            { label: 'Settings', href: route('admin.index', 'settings') },
-            { label: 'Activity Log', href: route('admin.index', 'activity-logs') },
+            { label: 'Pengaturan', href: route('admin.index', 'settings') },
+            { label: 'Log Aktivitas', href: route('admin.index', 'activity-logs') },
         ] });
     }
 
@@ -73,7 +68,15 @@ const groups = computed(() => {
 
 const currentPath = computed(() => page.url.split('?')[0]);
 const pathOf = (href) => new URL(href, window.location.origin).pathname;
-const isActive = (href) => currentPath.value === pathOf(href);
+const isActive = (href) => {
+    const target = pathOf(href);
+
+    if (target === '/reports') {
+        return currentPath.value === '/reports' || currentPath.value.startsWith('/reports/');
+    }
+
+    return currentPath.value === target;
+};
 const groupIsActive = (group) => group.children?.some((item) => isActive(item.href));
 const logout = () => router.post(route('logout'));
 
@@ -87,27 +90,27 @@ watchEffect(() => {
 
 const breadcrumbs = computed(() => {
     if (route().current('dashboard')) {
-        return [{ label: 'Dashboard', href: route('dashboard'), active: true }];
+        return [{ label: 'Dasbor', href: route('dashboard'), active: true }];
     }
 
     for (const group of groups.value) {
         if (group.href && isActive(group.href)) {
             return [
-                { label: 'Dashboard', href: route('dashboard') },
+                { label: 'Dasbor', href: route('dashboard') },
                 { label: group.label, active: true },
             ];
         }
         const child = group.children?.find((item) => isActive(item.href));
         if (child) {
             return [
-                { label: 'Dashboard', href: route('dashboard') },
+                { label: 'Dasbor', href: route('dashboard') },
                 { label: group.label },
                 { label: child.label, active: true },
             ];
         }
     }
 
-    return [{ label: 'Dashboard', href: route('dashboard') }, { label: 'Halaman', active: true }];
+    return [{ label: 'Dasbor', href: route('dashboard') }, { label: 'Halaman', active: true }];
 });
 </script>
 
@@ -122,7 +125,7 @@ const breadcrumbs = computed(() => {
                 <div class="grid h-10 w-10 place-items-center rounded-lg bg-orange-600 text-lg font-black text-white">CS</div>
                 <div class="min-w-0">
                     <div class="font-bold">CafeStock</div>
-                    <div class="truncate text-xs text-slate-500">Realtime Inventory</div>
+                    <div class="truncate text-xs text-slate-500">Inventori realtime</div>
                 </div>
                 <button class="ml-auto rounded-md p-2 lg:hidden" aria-label="Tutup menu" title="Tutup menu" @click="mobileOpen = false">
                     <X class="h-5 w-5" />
@@ -192,9 +195,9 @@ const breadcrumbs = computed(() => {
                     <ShieldCheck class="h-5 w-5 text-orange-600" />
                     <div class="hidden text-right sm:block">
                         <div class="text-sm font-semibold">{{ user?.name }}</div>
-                        <div class="text-xs capitalize text-slate-500">{{ user?.role?.replace('_', ' ') }}</div>
+                        <div class="text-xs text-slate-500">{{ labelForValue(user?.role) }}</div>
                     </div>
-                    <button class="rounded-md border border-orange-200 p-2 text-slate-600 hover:bg-orange-50" aria-label="Logout" title="Logout" @click="logout">
+                    <button class="rounded-md border border-orange-200 p-2 text-slate-600 hover:bg-orange-50" aria-label="Keluar" title="Keluar" @click="logout">
                         <LogOut class="h-5 w-5" />
                     </button>
                 </div>

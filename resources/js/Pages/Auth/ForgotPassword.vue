@@ -11,11 +11,11 @@ const submit = () => form.post(route('password.email'));
 
 <template>
     <GuestLayout>
-        <Head title="Forgot Password" />
+        <Head title="Lupa Password" />
 
         <div class="mb-5">
-            <h1 class="text-xl font-bold text-slate-900">Reset Password</h1>
-            <p class="mt-1 text-sm text-slate-500">Masukkan email akun CafeStock. Link reset akan dikirim lewat email.</p>
+            <h1 class="text-xl font-bold text-slate-900">Atur Ulang Password</h1>
+            <p class="mt-1 text-sm text-slate-500">Masukkan email akun CafeStock. Tautan reset akan dikirim lewat email.</p>
         </div>
 
         <div v-if="status" class="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
@@ -38,9 +38,9 @@ const submit = () => form.post(route('password.email'));
             </div>
 
             <div class="flex items-center justify-between gap-3">
-                <Link :href="route('login')" class="text-sm font-medium text-orange-700 hover:text-orange-900">Kembali login</Link>
+                <Link :href="route('login')" class="text-sm font-medium text-orange-700 hover:text-orange-900">Kembali masuk</Link>
                 <button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60" :disabled="form.processing">
-                    {{ form.processing ? 'Mengirim...' : 'Kirim Link' }}
+                    {{ form.processing ? 'Mengirim...' : 'Kirim Tautan' }}
                 </button>
             </div>
         </form>

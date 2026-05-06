@@ -57,7 +57,7 @@ class ProductionLogController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Production log selesai dan stok berkurang.');
+        return back()->with('success', 'Catatan produksi selesai dan stok berkurang.');
     }
 
     public function cancel(ProductionLog $productionLog, StockService $stock)
@@ -68,6 +68,6 @@ class ProductionLogController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Production log dibatalkan dan stok dikembalikan.');
+        return back()->with('success', 'Catatan produksi dibatalkan dan stok dikembalikan.');
     }
 }

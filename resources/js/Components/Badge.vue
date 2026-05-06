@@ -5,6 +5,8 @@ const props = defineProps({ value: String, tone: String });
 const tone = computed(() => props.tone || ({
     draft: 'slate', received: 'emerald', completed: 'emerald', approved: 'emerald',
     cancelled: 'red', active: 'emerald', inactive: 'slate', menipis: 'orange', habis: 'red',
+    draf: 'slate', diterima: 'emerald', selesai: 'emerald', disetujui: 'emerald',
+    dibatalkan: 'red', aktif: 'emerald', nonaktif: 'slate',
 }[String(props.value || '').toLowerCase()] || 'slate'));
 const classes = computed(() => ({
     slate: 'bg-slate-100 text-slate-700',

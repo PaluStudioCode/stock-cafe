@@ -19,7 +19,7 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="Register" />
+        <Head title="Daftar" />
 
         <div class="mb-5">
             <h1 class="text-xl font-bold text-slate-900">Buat Akun CafeStock</h1>
@@ -50,7 +50,7 @@ const submit = () => {
             <div class="flex items-center justify-between gap-3">
                 <Link :href="route('login')" class="text-sm font-medium text-orange-700 hover:text-orange-900">Sudah punya akun?</Link>
                 <button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60" :disabled="form.processing">
-                    {{ form.processing ? 'Membuat...' : 'Register' }}
+                    {{ form.processing ? 'Membuat...' : 'Daftar' }}
                 </button>
             </div>
         </form>

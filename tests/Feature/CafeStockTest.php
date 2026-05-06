@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Ingredient;
 use App\Models\IngredientCategory;
+use App\Models\ActivityLog;
 use App\Models\MenuItem;
 use App\Models\ProductionLog;
 use App\Models\PurchaseOrder;
@@ -19,8 +20,6 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\UploadedFile;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -190,10 +189,101 @@ class CafeStockTest extends TestCase
         ]);
     }
 
-    public function test_owner_can_create_ingredient_with_auto_code_opening_stock_and_image(): void
+    public function test_master_data_settings_and_unit_cost_changes_are_audited_without_secrets(): void
     {
         $this->seed();
-        Storage::fake('public');
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+        $ingredient = Ingredient::where('name', 'Arabica Beans')->firstOrFail();
+
+        $this->actingAs($owner)->put("/master/ingredients/{$ingredient->id}", [
+            'code' => $ingredient->code,
+            'name' => $ingredient->name,
+            'ingredient_category_id' => $ingredient->ingredient_category_id,
+            'unit_id' => $ingredient->unit_id,
+            'primary_supplier_id' => $ingredient->primary_supplier_id,
+            'last_unit_cost' => 175,
+            'current_stock' => $ingredient->current_stock,
+            'minimum_stock' => $ingredient->minimum_stock,
+            'reorder_level' => $ingredient->reorder_level,
+            'is_active' => true,
+        ])->assertRedirect();
+
+        $this->actingAs($owner)->put('/admin/settings/1', [
+            'key' => 'cafe_name',
+            'value' => 'CafeStock Secure',
+            'description' => 'Nama cafe aman',
+        ])->assertRedirect();
+
+        $this->actingAs($owner)->post('/admin/users', [
+            'name' => 'Audit Temp',
+            'email' => 'audit-temp@cafestock.test',
+            'role' => User::ROLE_BARISTA,
+            'is_active' => true,
+            'password' => 'supersecret123',
+        ])->assertRedirect();
+
+        $createdUser = User::where('email', 'audit-temp@cafestock.test')->firstOrFail();
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'update_master_data',
+            'module' => 'ingredients',
+            'reference_id' => $ingredient->id,
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'update_unit_cost',
+            'module' => 'ingredients',
+            'reference_id' => $ingredient->id,
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'update_settings',
+            'module' => 'settings',
+            'reference_id' => 1,
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'create_master_data',
+            'module' => 'users',
+            'reference_id' => $createdUser->id,
+        ]);
+        $this->assertFalse(ActivityLog::where('description', 'like', '%supersecret123%')->exists());
+    }
+
+    public function test_repeated_failed_login_creates_lockout_log_without_password_content(): void
+    {
+        $this->seed();
+
+        for ($i = 0; $i < 6; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.15.0.1'])->post('/login', [
+                'email' => 'owner@cafestock.test',
+                'password' => 'wrong-lockout-password',
+            ])->assertSessionHasErrors('email');
+        }
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'login_lockout',
+            'module' => 'auth',
+            'reference_type' => 'users',
+        ]);
+        $this->assertFalse(ActivityLog::where('description', 'like', '%wrong-lockout-password%')->exists());
+    }
+
+    public function test_profile_update_cannot_escalate_role_from_frontend_payload(): void
+    {
+        $this->seed();
+        $inventory = User::where('email', 'inventory@cafestock.test')->firstOrFail();
+
+        $this->actingAs($inventory)->patch('/profile', [
+            'name' => 'Rani Inventory Updated',
+            'email' => 'inventory@cafestock.test',
+            'role' => User::ROLE_OWNER,
+        ])->assertRedirect('/profile');
+
+        $inventory->refresh();
+        $this->assertSame('Rani Inventory Updated', $inventory->name);
+        $this->assertSame(User::ROLE_INVENTORY, $inventory->role);
+    }
+
+    public function test_owner_can_create_ingredient_with_auto_code_and_opening_stock(): void
+    {
+        $this->seed();
         $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
 
         $this->actingAs($owner)->post('/master/ingredients', [
@@ -202,7 +292,6 @@ class CafeStockTest extends TestCase
             'ingredient_category_id' => 1,
             'unit_id' => 1,
             'primary_supplier_id' => 1,
-            'image' => UploadedFile::fake()->image('beans.jpg'),
             'last_unit_cost' => 75000,
             'current_stock' => 12.5,
             'minimum_stock' => 3,
@@ -213,7 +302,6 @@ class CafeStockTest extends TestCase
         $ingredient = Ingredient::where('name', 'Single Origin Test')->firstOrFail();
         $this->assertMatchesRegularExpression('/^ING-\d{8}-\d{4}$/', $ingredient->code);
         $this->assertSame('12.500', number_format((float) $ingredient->current_stock, 3, '.', ''));
-        Storage::disk('public')->assertExists($ingredient->image_path);
 
         $this->assertDatabaseHas('stock_movements', [
             'ingredient_id' => $ingredient->id,
@@ -307,10 +395,16 @@ class CafeStockTest extends TestCase
         $this->seed();
         $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
 
+        $this->actingAs($owner)->get('/menu/menu-items')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Generic/Index')
+                ->where('resource', 'menu-items')
+                ->where('lookups.menuCategories', ['Coffee', 'Non Coffee', 'Manual Brew', 'Pastry']));
+
         $this->actingAs($owner)->post('/menu/menu-items', [
-            'code' => '',
             'name' => 'Seasonal Test Menu',
-            'category' => 'Seasonal',
+            'category' => 'Coffee',
             'selling_price' => 32000,
             'is_active' => true,
         ])->assertRedirect();
@@ -326,9 +420,8 @@ class CafeStockTest extends TestCase
         ])->assertRedirect();
 
         $this->actingAs($owner)->put("/menu/menu-items/{$menu->id}", [
-            'code' => $menu->code,
             'name' => 'Seasonal Test Menu Updated',
-            'category' => 'Seasonal',
+            'category' => 'Non Coffee',
             'selling_price' => 33000,
             'is_active' => false,
         ])->assertRedirect();
@@ -336,9 +429,17 @@ class CafeStockTest extends TestCase
         $this->assertDatabaseHas('menu_items', [
             'id' => $menu->id,
             'name' => 'Seasonal Test Menu Updated',
+            'category' => 'Non Coffee',
             'selling_price' => 33000,
             'is_active' => false,
         ]);
+
+        $this->actingAs($owner)->post('/menu/menu-items', [
+            'name' => 'Invalid Category Menu',
+            'category' => 'Seasonal',
+            'selling_price' => 32000,
+            'is_active' => true,
+        ])->assertSessionHasErrors('category');
 
         $this->actingAs($owner)->delete("/menu/menu-items/{$menu->id}")->assertRedirect();
 
@@ -364,6 +465,27 @@ class CafeStockTest extends TestCase
             'name' => 'Es Kopi Susu Aren',
             'is_active' => true,
         ]);
+    }
+
+    public function test_menu_recipe_index_payload_contains_names_not_only_ids(): void
+    {
+        $this->seed();
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+
+        $this->actingAs($owner)->get('/menu/menu-items')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Generic/Index')
+                ->where('resource', 'menu-items')
+                ->has('rows.data.0.recipe_items_count'));
+
+        $this->actingAs($owner)->get('/menu/recipe-items')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Generic/Index')
+                ->where('resource', 'recipe-items')
+                ->where('rows.data', fn ($rows) => collect($rows)->isNotEmpty()
+                    && collect($rows)->every(fn ($row) => isset($row['menu_item']['name'], $row['ingredient']['name']))));
     }
 
     public function test_recipe_item_validation_blocks_duplicate_inactive_ingredient_and_invalid_quantity(): void
@@ -507,7 +629,7 @@ class CafeStockTest extends TestCase
         $response = $this->actingAs($inventory)->getJson(route('dashboard.summary'))
             ->assertOk()
             ->assertJsonPath('role', 'inventory_staff')
-            ->assertJsonFragment(['label' => 'Draft Adjustment'])
+            ->assertJsonFragment(['label' => 'Draf Penyesuaian'])
             ->assertJsonStructure(['metrics', 'lowStock', 'recentPurchaseOrders', 'recentStockUsages', 'draftAdjustments']);
 
         $this->assertSame([], $response->json('recentActivities'));
@@ -539,27 +661,32 @@ class CafeStockTest extends TestCase
         $this->assertSame('Sirup Caramel', Ingredient::where('current_stock', 0)->first()->name);
     }
 
-    public function test_monitoring_stock_pages_show_low_out_and_filtered_stock_data(): void
+    public function test_monitoring_stock_page_uses_status_filter_for_low_and_out_stock(): void
     {
         $this->seed();
         $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
 
-        $this->actingAs($owner)->get('/monitoring/low-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Generic/Index')
-            ->where('resource', 'low-stock')
-            ->where('rows.data', fn ($rows) => collect($rows)->contains(fn ($row) => $row['name'] === 'Sirup Caramel')
-                && collect($rows)->every(fn ($row) => (float) $row['current_stock'] <= (float) $row['minimum_stock'])));
+        $this->actingAs($owner)->get('/monitoring/low-stock')
+            ->assertRedirect(route('monitoring.index', ['resource' => 'ingredients', 'stock_status' => 'low']));
 
-        $this->actingAs($owner)->get('/monitoring/out-of-stock')->assertOk()->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($owner)->get('/monitoring/out-of-stock')
+            ->assertRedirect(route('monitoring.index', ['resource' => 'ingredients', 'stock_status' => 'out']));
+
+        $this->actingAs($owner)->get('/monitoring/ingredients?stock_status=low')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Generic/Index')
-            ->where('resource', 'out-of-stock')
+            ->where('resource', 'ingredients')
+            ->where('title', 'Monitoring Stok')
+            ->where('filters.stock_status', 'low')
+            ->where('rows.data', fn ($rows) => collect($rows)->isNotEmpty()
+                && collect($rows)->contains(fn ($row) => $row['name'] === 'Fresh Milk')
+                && collect($rows)->every(fn ($row) => (float) $row['current_stock'] > 0
+                    && (float) $row['current_stock'] <= (float) $row['minimum_stock'])));
+
+        $this->actingAs($owner)->get('/monitoring/ingredients?stock_status=out')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('filters.stock_status', 'out')
             ->has('rows.data', 1)
             ->where('rows.data.0.name', 'Sirup Caramel')
             ->where('rows.data.0.current_stock', '0.000'));
-
-        $this->actingAs($owner)->get('/monitoring/ingredients?stock_status=low')->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->where('filters.stock_status', 'low')
-            ->where('rows.data', fn ($rows) => collect($rows)->every(fn ($row) => (float) $row['current_stock'] <= (float) $row['minimum_stock'])));
     }
 
     public function test_stock_movement_history_can_be_filtered_and_has_detail_payload(): void
@@ -577,7 +704,6 @@ class CafeStockTest extends TestCase
                 ->where('filters.type', 'purchase_receipt')
                 ->where('filters.reference_type', 'purchase_orders')
                 ->has('rows.data', 1)
-                ->where('rows.data.0.ingredient_id', 1)
                 ->where('rows.data.0.type', 'purchase_receipt')
                 ->where('rows.data.0.reference_type', 'purchase_orders')
                 ->where('rows.data.0.quantity_in', '2000.000')
@@ -600,7 +726,7 @@ class CafeStockTest extends TestCase
                 ->where('rows.data', fn ($rows) => collect($rows)->isNotEmpty()
                     && collect($rows)->every(fn ($row) => $row['type'] === 'waste'
                         && $row['reference_type'] === 'stock_usages'
-                        && $row['ingredient']['ingredient_category_id'] === 4)));
+                        && $row['ingredient']['category']['name'] === 'Sirup dan Flavor')));
     }
 
     public function test_stock_service_prevents_negative_stock_without_creating_movement(): void
@@ -619,6 +745,124 @@ class CafeStockTest extends TestCase
 
         $this->assertSame('0.000', number_format((float) $caramel->fresh()->current_stock, 3, '.', ''));
         $this->assertSame($movementCount, StockMovement::where('ingredient_id', $caramel->id)->count());
+    }
+
+    public function test_reports_show_low_stock_inventory_value_and_purchase_filters(): void
+    {
+        $this->seed();
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+
+        $this->actingAs($owner)->get('/reports/low-stock?category_id=4')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Reports/Index')
+                ->where('report', 'low-stock')
+                ->where('filters.category_id', '4')
+                ->where('rows.data', fn ($rows) => collect($rows)->contains(fn ($row) => $row['name'] === 'Sirup Caramel')
+                    && collect($rows)->every(fn ($row) => (int) $row['ingredient_category_id'] === 4
+                        && (float) $row['current_stock'] <= (float) $row['minimum_stock'])));
+
+        $this->actingAs($owner)->get('/reports/inventory-value?category_id=2')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('report', 'inventory-value')
+                ->where('rows.data', fn ($rows) => collect($rows)->contains(fn ($row) => $row['name'] === 'Fresh Milk'
+                    && (float) $row['inventory_value'] === 41800.0)));
+
+        $this->actingAs($owner)->get('/reports/purchases?date_from=2026-05-04&date_to=2026-05-04&supplier_id=2&status=draft')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('report', 'purchases')
+                ->where('filters.date_from', '2026-05-04')
+                ->where('filters.date_to', '2026-05-04')
+                ->where('filters.supplier_id', '2')
+                ->where('filters.status', 'draft')
+                ->has('rows.data', 1)
+                ->where('rows.data.0.purchase_code', 'PO-20260504-0001')
+                ->where('rows.data.0.status', 'draft'));
+    }
+
+    public function test_transaction_reports_exclude_cancelled_until_status_filter_requests_it(): void
+    {
+        $this->seed();
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+
+        $this->actingAs($owner)->get('/reports/production?date_from=2026-05-01&date_to=2026-05-06')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.data', fn ($rows) => collect($rows)->isNotEmpty()
+                    && collect($rows)->every(fn ($row) => $row['status'] !== 'cancelled')));
+
+        $this->actingAs($owner)->get('/reports/production?date_from=2026-05-01&date_to=2026-05-06&status=cancelled')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('rows.data', 1)
+                ->where('rows.data.0.production_code', 'PROD-20260504-0001')
+                ->where('rows.data.0.status', 'cancelled'));
+
+        $this->actingAs($owner)->get('/reports/waste?date_from=2026-05-01&date_to=2026-05-06')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.data', fn ($rows) => collect($rows)->isNotEmpty()
+                    && collect($rows)->every(fn ($row) => $row['status'] !== 'cancelled')));
+
+        $this->actingAs($owner)->get('/reports/waste?date_from=2026-05-01&date_to=2026-05-06&usage_type=expired&status=cancelled')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('rows.data', 1)
+                ->where('rows.data.0.usage_code', 'USE-20260504-0003')
+                ->where('rows.data.0.usage_type', 'expired')
+                ->where('rows.data.0.status', 'cancelled'));
+    }
+
+    public function test_stock_movement_report_filters_by_date_ingredient_category_and_type(): void
+    {
+        $this->seed();
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+
+        $this->actingAs($owner)->get('/reports/stock-movement?date_from=2000-01-01&date_to=2100-01-01&ingredient_id=1&category_id=1&type=purchase_receipt')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Reports/Index')
+                ->where('filters.ingredient_id', '1')
+                ->where('filters.category_id', '1')
+                ->where('filters.type', 'purchase_receipt')
+                ->has('rows.data', 1)
+                ->where('rows.data.0.ingredient_id', 1)
+                ->where('rows.data.0.type', 'purchase_receipt')
+                ->where('rows.data.0.ingredient.name', 'Arabica Beans')
+                ->where('rows.data.0.ingredient.category.name', 'Kopi'));
+    }
+
+    public function test_report_export_is_owner_only_and_follows_active_filters(): void
+    {
+        $this->seed();
+        $owner = User::where('email', 'owner@cafestock.test')->firstOrFail();
+        $inventory = User::where('email', 'inventory@cafestock.test')->firstOrFail();
+
+        $this->actingAs($inventory)->get('/reports/stock/export/xlsx')->assertForbidden();
+
+        $pdf = $this->actingAs($owner)->get('/reports/purchases/export/pdf?date_from=2026-05-04&date_to=2026-05-04&supplier_id=2&status=draft')
+            ->assertOk();
+
+        $this->assertSame('application/pdf', $pdf->headers->get('content-type'));
+        $pdfContent = $pdf->streamedContent();
+        $this->assertStringStartsWith('%PDF-1.4', $pdfContent);
+        $this->assertStringContainsString('PO-20260504-0001', $pdfContent);
+        $this->assertStringNotContainsString('PO-20260502-0002', $pdfContent);
+
+        $xlsx = $this->actingAs($owner)->get('/reports/stock/export/xlsx?category_id=4')
+            ->assertOk();
+
+        $this->assertStringContainsString('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $xlsx->headers->get('content-type'));
+        $this->assertStringContainsString('.xlsx', $xlsx->headers->get('content-disposition'));
+        $this->assertNotEmpty($xlsx->streamedContent());
+        $this->assertDatabaseHas('activity_logs', [
+            'user_id' => $owner->id,
+            'action' => 'export_report',
+            'module' => 'reports',
+            'reference_type' => 'purchases',
+        ]);
     }
 
     public function test_draft_purchase_order_can_be_deleted_without_stock_movement(): void
@@ -642,6 +886,8 @@ class CafeStockTest extends TestCase
             'supplier_id' => 1,
             'purchase_date' => '2026-05-06',
             'discount' => 1000,
+            'subtotal' => 999999,
+            'total_amount' => 999999,
             'notes' => 'Draft purchase test',
             'items' => [
                 ['ingredient_id' => 1, 'quantity' => 10, 'unit_cost' => 160],
@@ -781,6 +1027,7 @@ class CafeStockTest extends TestCase
             'menu_item_id' => 2,
             'quantity' => 1,
             'production_date' => '2026-05-06 10:00:00',
+            'estimated_total_cost' => 1,
             'notes' => 'Americano test',
         ])->assertRedirect();
 
@@ -921,6 +1168,7 @@ class CafeStockTest extends TestCase
             'usage_date' => '2026-05-06 11:00:00',
             'usage_type' => 'internal_use',
             'status' => 'draft',
+            'estimated_total_cost' => 999999,
             'notes' => 'Draft stock usage test',
             'items' => [
                 ['ingredient_id' => 1, 'quantity' => 10, 'notes' => 'Training'],

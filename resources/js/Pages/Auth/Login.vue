@@ -12,7 +12,7 @@ const submit = () => form.post(route('login'), { onFinish: () => form.reset('pas
 
 <template>
     <GuestLayout>
-        <Head title="Login" />
+        <Head title="Masuk" />
         <div v-if="status" class="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{{ status }}</div>
         <form class="space-y-4" @submit.prevent="submit">
             <div>
@@ -32,7 +32,7 @@ const submit = () => form.post(route('login'), { onFinish: () => form.reset('pas
             <div class="flex items-center justify-between gap-3">
                 <Link v-if="canResetPassword" :href="route('password.request')" class="text-sm font-medium text-orange-700 hover:text-orange-900">Lupa password?</Link>
                 <button class="ml-auto rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60" :disabled="form.processing">
-                    {{ form.processing ? 'Memproses...' : 'Login' }}
+                    {{ form.processing ? 'Memproses...' : 'Masuk' }}
                 </button>
             </div>
         </form>

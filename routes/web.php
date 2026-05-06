@@ -57,6 +57,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/stock-usages/{stockUsage}/cancel', [StockUsageController::class, 'cancel'])->name('stock-usages.cancel');
         Route::get('/admin/{resource}', [DataController::class, 'index'])->whereIn('resource', ['users', 'settings', 'activity-logs'])->name('admin.index');
         Route::post('/admin/{resource}', [DataController::class, 'store'])->whereIn('resource', ['users', 'settings'])->name('admin.store');
+        Route::put('/admin/settings', [DataController::class, 'updateSettings'])->name('admin.settings.update');
         Route::put('/admin/{resource}/{id}', [DataController::class, 'update'])->whereNumber('id')->name('admin.update');
         Route::delete('/admin/{resource}/{id}', [DataController::class, 'destroy'])->whereNumber('id')->name('admin.destroy');
         Route::get('/reports/{report}/export/{format}', [ReportController::class, 'export'])->name('reports.export');
@@ -77,7 +78,7 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/menu/{resource}/{id}', [DataController::class, 'destroy'])->middleware('role:owner')->whereNumber('id')->name('menu.destroy');
 
         Route::get('/monitoring/{resource}', [DataController::class, 'index'])->whereIn('resource', ['ingredients', 'low-stock', 'out-of-stock', 'stock-movements'])->name('monitoring.index');
-        Route::get('/reports/{report}', [ReportController::class, 'index'])
+        Route::get('/reports/{report?}', [ReportController::class, 'index'])
             ->middleware('role:owner,inventory_staff')
             ->name('reports.index');
     });

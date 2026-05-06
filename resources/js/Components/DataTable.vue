@@ -1,11 +1,14 @@
 <script setup>
 import EmptyState from '@/Components/EmptyState.vue';
+import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
     columns: { type: Array, default: () => [] },
     rows: { type: Array, default: () => [] },
     emptyTitle: { type: String, default: 'Belum ada data' },
 });
+
+const visibleColumns = computed(() => props.columns.filter((column) => !['id', 'created_at', 'updated_at'].includes(column.key)));
 </script>
 
 <template>
@@ -15,13 +18,13 @@ defineProps({
             <table class="min-w-full text-sm">
                 <thead>
                     <tr class="border-b bg-stone-50 text-left text-xs uppercase text-slate-500">
-                        <th v-for="column in columns" :key="column.key" class="px-3 py-3">{{ column.label }}</th>
+                        <th v-for="column in visibleColumns" :key="column.key" class="px-3 py-3">{{ column.label }}</th>
                         <th v-if="$slots.actions" class="px-3 py-3">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="row in rows" :key="row.id" class="border-b last:border-0">
-                        <td v-for="column in columns" :key="column.key" class="max-w-xs truncate px-3 py-3">
+                        <td v-for="column in visibleColumns" :key="column.key" class="max-w-xs truncate px-3 py-3">
                             <slot :name="`cell-${column.key}`" :row="row">
                                 {{ row[column.key] }}
                             </slot>

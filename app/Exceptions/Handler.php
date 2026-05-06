@@ -16,6 +16,13 @@ class Handler extends ExceptionHandler
         'current_password',
         'password',
         'password_confirmation',
+        'token',
+        'api_key',
+        'secret',
+        'credential',
+        'private_key',
+        'access_key',
+        'authorization',
     ];
 
     /**

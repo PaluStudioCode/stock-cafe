@@ -95,6 +95,17 @@ class LoginRequest extends FormRequest
         event(new Lockout($this));
 
         $seconds = RateLimiter::availableIn($this->throttleKey());
+        $user = User::where('email', $this->string('email'))->first();
+
+        ActivityLog::create([
+            'user_id' => $user?->id,
+            'action' => 'login_lockout',
+            'module' => 'auth',
+            'description' => 'Masuk gagal berulang untuk '.$this->string('email'),
+            'reference_type' => $user ? 'users' : null,
+            'reference_id' => $user?->id,
+            'ip_address' => $this->ip(),
+        ]);
 
         throw ValidationException::withMessages([
             'email' => trans('auth.throttle', [

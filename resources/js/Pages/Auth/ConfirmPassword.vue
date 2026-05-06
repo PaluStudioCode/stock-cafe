@@ -9,7 +9,7 @@ const submit = () => form.post(route('password.confirm'), { onFinish: () => form
 
 <template>
     <GuestLayout>
-        <Head title="Confirm Password" />
+        <Head title="Konfirmasi Password" />
 
         <div class="mb-5">
             <h1 class="text-xl font-bold text-slate-900">Konfirmasi Password</h1>

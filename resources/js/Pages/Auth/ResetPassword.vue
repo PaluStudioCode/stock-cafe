@@ -49,7 +49,7 @@ const submit = () => {
             </div>
             <div class="flex justify-end">
                 <button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60" :disabled="form.processing">
-                    {{ form.processing ? 'Menyimpan...' : 'Reset Password' }}
+                    {{ form.processing ? 'Menyimpan...' : 'Simpan Password Baru' }}
                 </button>
             </div>
         </form>

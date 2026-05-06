@@ -7,6 +7,7 @@ use App\Models\StockUsage;
 use App\Models\StockUsageItem;
 use App\Services\StockService;
 use App\Support\CafeStock;
+use App\Support\CafeStockMath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -53,18 +54,18 @@ class StockUsageController extends Controller
             }
         }
 
-        return back()->with('success', 'Stock usage tersimpan.');
+        return back()->with('success', 'Pemakaian stok tersimpan.');
     }
 
     public function update(Request $request, StockUsage $stockUsage, StockService $stock)
     {
-        abort_unless($stockUsage->status === 'draft', 422, 'Stock usage completed tidak dapat diedit langsung.');
+        abort_unless($stockUsage->status === 'draft', 422, 'Pemakaian stok yang sudah selesai tidak dapat diedit langsung.');
 
         $data = $this->validated($request);
 
         DB::transaction(function () use ($data, $stockUsage) {
             $stockUsage = StockUsage::lockForUpdate()->findOrFail($stockUsage->id);
-            abort_unless($stockUsage->status === 'draft', 422, 'Stock usage completed tidak dapat diedit langsung.');
+            abort_unless($stockUsage->status === 'draft', 422, 'Pemakaian stok yang sudah selesai tidak dapat diedit langsung.');
 
             $stockUsage->update([
                 'usage_date' => $data['usage_date'] ?? now(),
@@ -83,15 +84,15 @@ class StockUsageController extends Controller
             }
         }
 
-        return back()->with('success', 'Stock usage diperbarui.');
+        return back()->with('success', 'Pemakaian stok diperbarui.');
     }
 
     public function destroy(StockUsage $stockUsage)
     {
-        abort_unless($stockUsage->status === 'draft', 422, 'Hanya stock usage draft yang dapat dihapus.');
+        abort_unless($stockUsage->status === 'draft', 422, 'Hanya draf pemakaian stok yang dapat dihapus.');
         $stockUsage->delete();
 
-        return back()->with('success', 'Draft stock usage dihapus.');
+        return back()->with('success', 'Draf pemakaian stok dihapus.');
     }
 
     public function cancel(StockUsage $stockUsage, StockService $stock)
@@ -102,7 +103,7 @@ class StockUsageController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Stock usage dibatalkan dan stok dikembalikan.');
+        return back()->with('success', 'Pemakaian stok dibatalkan dan stok dikembalikan.');
     }
 
     private function validated(Request $request): array
@@ -130,7 +131,7 @@ class StockUsageController extends Controller
                 'ingredient_id' => $ingredient->id,
                 'quantity' => $item['quantity'],
                 'unit_cost_snapshot' => $ingredient->last_unit_cost,
-                'estimated_cost' => round((float) $item['quantity'] * (float) $ingredient->last_unit_cost, 2),
+                'estimated_cost' => CafeStockMath::estimatedCost($item['quantity'], $ingredient->last_unit_cost),
                 'notes' => $item['notes'] ?? null,
             ]);
         }
@@ -141,7 +142,7 @@ class StockUsageController extends Controller
         return collect($items)->sum(function ($item) {
             $ingredient = Ingredient::findOrFail($item['ingredient_id']);
 
-            return round((float) $item['quantity'] * (float) $ingredient->last_unit_cost, 2);
+            return CafeStockMath::estimatedCost($item['quantity'], $ingredient->last_unit_cost);
         });
     }
 }

@@ -8,6 +8,7 @@ use App\Models\Supplier;
 use App\Models\Ingredient;
 use App\Services\StockService;
 use App\Support\CafeStock;
+use App\Support\CafeStockMath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -45,18 +46,18 @@ class PurchaseOrderController extends Controller
             $this->replaceItems($order, $data['items']);
         });
 
-        return back()->with('success', 'Purchase order draft dibuat.');
+        return back()->with('success', 'Draf pesanan pembelian dibuat.');
     }
 
     public function update(Request $request, PurchaseOrder $purchaseOrder)
     {
-        abort_unless($purchaseOrder->status === 'draft', 422, 'Purchase order received tidak dapat diubah.');
+        abort_unless($purchaseOrder->status === 'draft', 422, 'Pesanan pembelian yang sudah diterima tidak dapat diubah.');
 
         $data = $this->validated($request);
 
         DB::transaction(function () use ($data, $purchaseOrder) {
             $purchaseOrder = PurchaseOrder::lockForUpdate()->findOrFail($purchaseOrder->id);
-            abort_unless($purchaseOrder->status === 'draft', 422, 'Purchase order received tidak dapat diubah.');
+            abort_unless($purchaseOrder->status === 'draft', 422, 'Pesanan pembelian yang sudah diterima tidak dapat diubah.');
 
             [$subtotal, $discount, $total] = $this->totals($data);
             $purchaseOrder->update([
@@ -70,7 +71,7 @@ class PurchaseOrderController extends Controller
             $this->replaceItems($purchaseOrder, $data['items']);
         });
 
-        return back()->with('success', 'Purchase order draft diperbarui.');
+        return back()->with('success', 'Draf pesanan pembelian diperbarui.');
     }
 
     public function receive(PurchaseOrder $purchaseOrder, StockService $stock)
@@ -81,15 +82,15 @@ class PurchaseOrderController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Purchase order diterima dan stok bertambah.');
+        return back()->with('success', 'Pesanan pembelian diterima dan stok bertambah.');
     }
 
     public function destroy(PurchaseOrder $purchaseOrder)
     {
-        abort_unless($purchaseOrder->status === 'draft', 422, 'Purchase order received tidak dapat dihapus.');
+        abort_unless($purchaseOrder->status === 'draft', 422, 'Pesanan pembelian yang sudah diterima tidak dapat dihapus.');
         $purchaseOrder->delete();
 
-        return back()->with('success', 'Draft purchase order dihapus.');
+        return back()->with('success', 'Draf pesanan pembelian dihapus.');
     }
 
     private function validated(Request $request): array
@@ -108,11 +109,11 @@ class PurchaseOrderController extends Controller
 
     private function totals(array $data): array
     {
-        $subtotal = collect($data['items'])->sum(fn ($item) => round((float) $item['quantity'] * (float) $item['unit_cost'], 2));
+        $subtotal = CafeStockMath::purchaseSubtotal($data['items']);
         $discount = (float) ($data['discount'] ?? 0);
         abort_if($discount > $subtotal, 422, 'Diskon tidak boleh melebihi subtotal.');
 
-        return [$subtotal, $discount, $subtotal - $discount];
+        return [$subtotal, $discount, CafeStockMath::purchaseTotal($subtotal, $discount)];
     }
 
     private function replaceItems(PurchaseOrder $order, array $items): void
@@ -125,7 +126,7 @@ class PurchaseOrderController extends Controller
                 'ingredient_id' => $item['ingredient_id'],
                 'quantity' => $item['quantity'],
                 'unit_cost' => $item['unit_cost'],
-                'subtotal' => round((float) $item['quantity'] * (float) $item['unit_cost'], 2),
+                'subtotal' => CafeStockMath::lineSubtotal($item['quantity'], $item['unit_cost']),
             ]);
         }
     }

@@ -10,6 +10,7 @@ use App\Models\PurchaseOrder;
 use App\Models\StockAdjustment;
 use App\Models\StockMovement;
 use App\Models\StockUsage;
+use App\Support\CafeStockMath;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -30,29 +31,31 @@ class StockService
             throw new RuntimeException('Quantity movement tidak boleh negatif.');
         }
 
-        $locked = Ingredient::query()->lockForUpdate()->findOrFail($ingredient->id);
-        $before = (float) $locked->current_stock;
-        $after = round($before + $quantityIn - $quantityOut, 3);
+        return DB::transaction(function () use ($ingredient, $userId, $type, $referenceType, $referenceId, $quantityIn, $quantityOut, $unitCost, $notes) {
+            $locked = Ingredient::query()->lockForUpdate()->findOrFail($ingredient->id);
+            $before = (float) $locked->current_stock;
+            $after = round($before + $quantityIn - $quantityOut, 3);
 
-        if ($after < 0) {
-            throw new RuntimeException("Stok {$locked->name} tidak cukup.");
-        }
+            if ($after < 0) {
+                throw new RuntimeException("Stok {$locked->name} tidak cukup.");
+            }
 
-        $locked->forceFill(['current_stock' => $after])->save();
+            $locked->forceFill(['current_stock' => $after])->save();
 
-        return StockMovement::create([
-            'ingredient_id' => $locked->id,
-            'user_id' => $userId,
-            'type' => $type,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'quantity_in' => $quantityIn,
-            'quantity_out' => $quantityOut,
-            'stock_before' => $before,
-            'stock_after' => $after,
-            'unit_cost_snapshot' => $unitCost,
-            'notes' => $notes,
-        ]);
+            return StockMovement::create([
+                'ingredient_id' => $locked->id,
+                'user_id' => $userId,
+                'type' => $type,
+                'reference_type' => $referenceType,
+                'reference_id' => $referenceId,
+                'quantity_in' => $quantityIn,
+                'quantity_out' => $quantityOut,
+                'stock_before' => $before,
+                'stock_after' => $after,
+                'unit_cost_snapshot' => $unitCost,
+                'notes' => $notes,
+            ]);
+        });
     }
 
     public function receivePurchaseOrder(PurchaseOrder $order, int $userId): PurchaseOrder
@@ -95,11 +98,11 @@ class StockService
                 if (! $ingredient->is_active) {
                     throw new RuntimeException("Bahan {$ingredient->name} tidak aktif.");
                 }
-                $used = round((float) $recipe->quantity_per_serving * (float) $log->quantity, 3);
+                $used = CafeStockMath::productionQuantityUsed($recipe->quantity_per_serving, $log->quantity);
                 if ((float) $ingredient->current_stock < $used) {
                     throw new RuntimeException("Stok {$ingredient->name} tidak cukup.");
                 }
-                $cost = round($used * (float) $ingredient->last_unit_cost, 2);
+                $cost = CafeStockMath::estimatedCost($used, $ingredient->last_unit_cost);
                 ProductionLogItem::create([
                     'production_log_id' => $log->id,
                     'ingredient_id' => $ingredient->id,
@@ -166,7 +169,7 @@ class StockService
             foreach ($usage->items as $item) {
                 $ingredient = Ingredient::query()->lockForUpdate()->findOrFail($item->ingredient_id);
                 $type = $usage->usage_type === 'waste' ? 'waste' : 'manual_usage';
-                $cost = round((float) $item->quantity * (float) $ingredient->last_unit_cost, 2);
+                $cost = CafeStockMath::estimatedCost($item->quantity, $ingredient->last_unit_cost);
                 $item->forceFill(['unit_cost_snapshot' => $ingredient->last_unit_cost, 'estimated_cost' => $cost])->save();
                 $this->move($ingredient, $usage->user_id, $type, 'stock_usages', $usage->id, 0, (float) $item->quantity, (float) $ingredient->last_unit_cost, $usage->usage_code);
                 $total += $cost;
@@ -225,7 +228,7 @@ class StockService
             foreach ($adjustment->items as $item) {
                 $ingredient = Ingredient::query()->lockForUpdate()->findOrFail($item->ingredient_id);
                 $system = (float) $ingredient->current_stock;
-                $difference = round((float) $item->counted_stock - $system, 3);
+                $difference = CafeStockMath::stockDifference($system, $item->counted_stock);
                 $item->forceFill(['system_stock' => $system, 'difference' => $difference])->save();
 
                 if ($difference > 0) {

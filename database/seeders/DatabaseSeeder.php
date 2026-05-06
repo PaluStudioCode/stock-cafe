@@ -162,7 +162,7 @@ class DatabaseSeeder extends Seeder
             ['default_minimum_stock','10','Default minimum stock bahan baru'],
             ['table_per_page','20','Jumlah data default per halaman'],
             ['report_export_formats','pdf,xlsx','Format export laporan yang didukung'],
-            ['upload_max_file_size_mb','2','Batas upload gambar bahan'],
+            ['upload_max_file_size_mb','2','Batas maksimal upload file'],
         ], $now, fn ($r, $i) => ['id' => $i + 1, 'key' => $r[0], 'value' => $r[1], 'description' => $r[2]]));
     }
 

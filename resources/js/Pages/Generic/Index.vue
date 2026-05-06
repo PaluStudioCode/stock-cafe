@@ -5,6 +5,7 @@ import DeleteConfirmationModal from '@/Components/DeleteConfirmationModal.vue';
 import EmptyState from '@/Components/EmptyState.vue';
 import Pagination from '@/Components/Pagination.vue';
 import StockMovementDetailModal from '@/Components/StockMovementDetailModal.vue';
+import { labelForValue } from '@/utilities/formatters';
 import { Eye, Pencil, Plus, Search, Trash2, X } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
@@ -21,7 +22,7 @@ const ingredientFilters = ref({
     is_active: props.filters?.is_active ?? '',
     stock_status: props.filters?.stock_status || '',
 });
-const stockResources = ['ingredients', 'low-stock', 'out-of-stock'];
+const stockResources = ['ingredients'];
 const stockMovementFilters = ref({
     ingredient_id: props.filters?.ingredient_id || '',
     category_id: props.filters?.category_id || '',
@@ -31,13 +32,59 @@ const stockMovementFilters = ref({
     date_to: props.filters?.date_to || '',
 });
 const rowList = computed(() => props.rows?.data || []);
-const keys = computed(() => rowList.value[0] ? Object.keys(rowList.value[0]).filter(k => !['created_at','updated_at','email_verified_at','password','remember_token'].includes(k)) : []);
+const hiddenTableColumns = ['id','created_at','updated_at','email_verified_at','password','remember_token','ingredient_category_id','unit_id','primary_supplier_id','ingredient_id','user_id','reference_id'];
+const resourceColumns = {
+    'ingredient-categories': ['name','description'],
+    units: ['name','symbol'],
+    suppliers: ['name','phone','address','notes','is_active'],
+    ingredients: ['code','name','category','unit','supplier','last_unit_cost','current_stock','minimum_stock','reorder_level','is_active'],
+    'menu-items': ['code','name','category','selling_price','recipe_items_count','is_active'],
+    'recipe-items': ['menu_item','ingredient','quantity_per_serving','notes'],
+    'stock-movements': ['ingredient','user','type','reference_type','quantity_in','quantity_out','stock_before','stock_after','unit_cost_snapshot','notes'],
+};
+const keys = computed(() => resourceColumns[props.resource] || (rowList.value[0] ? Object.keys(rowList.value[0]).filter(k => !hiddenTableColumns.includes(k)) : []));
 const fields = computed(() => ({
     'ingredient-categories': ['name','description'], units: ['name','symbol'], suppliers: ['name','phone','address','notes','is_active'],
-    ingredients: ['code','name','ingredient_category_id','unit_id','primary_supplier_id','image','last_unit_cost','current_stock','minimum_stock','reorder_level','is_active'],
-    'menu-items': ['code','name','category','selling_price','is_active'], 'recipe-items': ['menu_item_id','ingredient_id','quantity_per_serving','notes'],
+    ingredients: ['code','name','ingredient_category_id','unit_id','primary_supplier_id','last_unit_cost','current_stock','minimum_stock','reorder_level','is_active'],
+    'menu-items': ['name','category','selling_price','is_active'], 'recipe-items': ['menu_item_id','ingredient_id','quantity_per_serving','notes'],
     users: ['name','email','password','role','is_active'], settings: ['key','value','description'],
 }[props.resource] || []));
+const labels = {
+    name: 'Nama',
+    description: 'Deskripsi',
+    symbol: 'Simbol',
+    phone: 'Telepon',
+    address: 'Alamat',
+    notes: 'Catatan',
+    is_active: 'Status',
+    code: 'Kode',
+    category: 'Kategori',
+    ingredient_category_id: 'Kategori',
+    unit: 'Satuan',
+    unit_id: 'Satuan',
+    supplier: 'Supplier',
+    primary_supplier_id: 'Supplier utama',
+    last_unit_cost: 'Harga modal terakhir',
+    current_stock: 'Stok saat ini',
+    minimum_stock: 'Stok minimum',
+    reorder_level: 'Reorder level',
+    selling_price: 'Harga jual',
+    recipe_items_count: 'Jumlah bahan resep',
+    menu_item: 'Menu',
+    menu_item_id: 'Menu',
+    ingredient: 'Bahan',
+    ingredient_id: 'Bahan',
+    quantity_per_serving: 'Jumlah per porsi',
+    user: 'Pengguna',
+    user_id: 'Pengguna',
+    type: 'Tipe',
+    reference_type: 'Referensi',
+    quantity_in: 'Masuk',
+    quantity_out: 'Keluar',
+    stock_before: 'Stok sebelum',
+    stock_after: 'Stok sesudah',
+    unit_cost_snapshot: 'Harga snapshot',
+};
 
 const routeName = (action) => props.resource === 'users' || props.resource === 'settings'
     ? `admin.${action}`
@@ -88,7 +135,28 @@ const doSearch = () => {
 
     router.get(window.location.pathname, compact(params), { preserveState: true });
 };
-const display = (row, key) => typeof row[key] === 'object' && row[key] !== null ? (row[key].name || row[key].code || row[key].email || JSON.stringify(row[key])) : row[key];
+const labelFor = (key) => labels[key] || key.replaceAll('_', ' ');
+const display = (row, key) => {
+    const value = row[key];
+
+    if (key === 'is_active') {
+        return value ? 'Aktif' : 'Nonaktif';
+    }
+    if (typeof value === 'boolean') {
+        return value ? 'Ya' : 'Tidak';
+    }
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+    if (typeof value === 'object') {
+        return value.name || value.email || value.code || value.symbol || '-';
+    }
+    if (['status', 'type', 'reference_type', 'role', 'action', 'module'].includes(key)) {
+        return labelForValue(value);
+    }
+
+    return value;
+};
 const optionLabel = (opt, field) => {
     if (field === 'ingredient_id') {
         return `${opt.name} (${opt.unit?.symbol || '-'})`;
@@ -103,7 +171,6 @@ const optionLabel = (opt, field) => {
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold">{{ title }}</h1>
-                <p class="text-sm text-slate-500">Kelola dan pantau data CafeStock.</p>
             </div>
             <button v-if="!readonly && fields.length" class="inline-flex items-center gap-2 rounded-md bg-orange-600 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-700" @click="openForm()">
                 <Plus class="h-4 w-4" /> Tambah
@@ -148,47 +215,57 @@ const optionLabel = (opt, field) => {
             </select>
             <select v-model="stockMovementFilters.type" class="rounded-md border-slate-300 text-sm" @change="doSearch">
                 <option value="">Semua tipe</option>
-                <option v-for="type in lookups.movementTypes" :key="type" :value="type">{{ type }}</option>
+                <option v-for="type in lookups.movementTypes" :key="type" :value="type">{{ labelForValue(type) }}</option>
             </select>
             <select v-model="stockMovementFilters.reference_type" class="rounded-md border-slate-300 text-sm" @change="doSearch">
                 <option value="">Semua referensi</option>
-                <option v-for="type in lookups.referenceTypes" :key="type" :value="type">{{ type }}</option>
+                <option v-for="type in lookups.referenceTypes" :key="type" :value="type">{{ labelForValue(type) }}</option>
             </select>
             <input v-model="stockMovementFilters.date_from" type="date" class="rounded-md border-slate-300 text-sm" @change="doSearch" />
             <input v-model="stockMovementFilters.date_to" type="date" class="rounded-md border-slate-300 text-sm" @change="doSearch" />
         </div>
 
-        <form v-if="showForm" class="mb-5 grid gap-3 rounded-lg border border-orange-100 bg-white p-4 shadow-sm md:grid-cols-3" @submit.prevent="submit">
-            <div class="md:col-span-3 flex items-center justify-between">
-                <h2 class="text-sm font-bold text-slate-700">{{ editingRow ? 'Ubah data' : 'Tambah data' }}</h2>
-                <button type="button" class="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Tutup form" title="Tutup form" @click="closeForm"><X class="h-4 w-4" /></button>
-            </div>
-            <div v-for="field in fields" :key="field">
-                <label class="text-xs font-bold uppercase text-slate-500">{{ field.replaceAll('_', ' ') }}</label>
-                <select v-if="field === 'role'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
-                    <option v-for="role in lookups.roles" :key="role" :value="role">{{ role }}</option>
-                </select>
-                <select v-else-if="resource === 'settings' && field === 'key'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
-                    <option v-for="key in lookups.settingKeys" :key="key" :value="key">{{ key }}</option>
-                </select>
-                <select v-else-if="field.endsWith('_id')" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
-                    <option :value="null">Pilih</option>
-                    <option v-for="opt in (field.includes('category') ? lookups.categories : field.includes('unit') ? lookups.units : field.includes('supplier') ? lookups.suppliers : field.includes('menu') ? lookups.menus : lookups.ingredients)" :key="opt.id" :value="opt.id">{{ optionLabel(opt, field) }}</option>
-                </select>
-                <select v-else-if="field === 'is_active'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300"><option :value="true">Aktif</option><option :value="false">Nonaktif</option></select>
-                <input v-else-if="field === 'image'" type="file" accept="image/jpeg,image/png,image/webp" class="mt-1 w-full rounded-md border border-slate-300 bg-white text-sm file:mr-3 file:border-0 file:bg-orange-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-orange-700" @change="form[field] = $event.target.files[0]" />
-                <textarea v-else-if="['description','address','notes','value'].includes(field)" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300" rows="2" />
-                <input v-else v-model="form[field]" :type="field === 'password' ? 'password' : 'text'" class="mt-1 w-full rounded-md border-slate-300" />
-                <div v-if="form.errors[field]" class="mt-1 text-xs text-red-600">{{ form.errors[field] }}</div>
-            </div>
-            <div class="flex items-end"><button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white" :disabled="form.processing">Simpan</button></div>
-        </form>
+        <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4" @click.self="closeForm">
+            <form class="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl" @submit.prevent="submit">
+                <div class="mb-4 flex items-center justify-between gap-3">
+                    <h2 class="text-base font-bold text-slate-800">{{ editingRow ? 'Ubah data' : 'Tambah data' }}</h2>
+                    <button type="button" class="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Tutup form" title="Tutup form" @click="closeForm"><X class="h-4 w-4" /></button>
+                </div>
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div v-for="field in fields" :key="field">
+                        <label class="text-xs font-bold uppercase text-slate-500">{{ labelFor(field) }}</label>
+                        <select v-if="field === 'role'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
+                            <option v-for="role in lookups.roles" :key="role" :value="role">{{ labelForValue(role) }}</option>
+                        </select>
+                        <select v-else-if="resource === 'settings' && field === 'key'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
+                            <option v-for="key in lookups.settingKeys" :key="key" :value="key">{{ key }}</option>
+                        </select>
+                        <select v-else-if="resource === 'menu-items' && field === 'category'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
+                            <option value="">Pilih kategori</option>
+                            <option v-for="category in lookups.menuCategories" :key="category" :value="category">{{ category }}</option>
+                        </select>
+                        <select v-else-if="field.endsWith('_id')" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300">
+                            <option :value="null">Pilih</option>
+                            <option v-for="opt in (field.includes('category') ? lookups.categories : field.includes('unit') ? lookups.units : field.includes('supplier') ? lookups.suppliers : field.includes('menu') ? lookups.menus : lookups.ingredients)" :key="opt.id" :value="opt.id">{{ optionLabel(opt, field) }}</option>
+                        </select>
+                        <select v-else-if="field === 'is_active'" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300"><option :value="true">Aktif</option><option :value="false">Nonaktif</option></select>
+                        <textarea v-else-if="['description','address','notes','value'].includes(field)" v-model="form[field]" class="mt-1 w-full rounded-md border-slate-300" rows="2" />
+                        <input v-else v-model="form[field]" :type="field === 'password' ? 'password' : 'text'" class="mt-1 w-full rounded-md border-slate-300" />
+                        <div v-if="form.errors[field]" class="mt-1 text-xs text-red-600">{{ form.errors[field] }}</div>
+                    </div>
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-md border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50" @click="closeForm">Batal</button>
+                    <button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700" :disabled="form.processing">Simpan</button>
+                </div>
+            </form>
+        </div>
 
         <section class="overflow-hidden rounded-lg border border-orange-100 bg-white shadow-sm">
             <EmptyState v-if="!rowList.length" title="Belum ada data" message="Data akan tampil setelah tersedia atau filter diubah." />
             <div v-else class="overflow-x-auto">
                 <table class="min-w-full text-sm">
-                    <thead><tr class="border-b bg-stone-50 text-left text-xs uppercase text-slate-500"><th v-for="key in keys" :key="key" class="px-3 py-3">{{ key.replaceAll('_', ' ') }}</th><th v-if="!readonly || resource === 'stock-movements'" class="px-3 py-3">Aksi</th></tr></thead>
+                    <thead><tr class="border-b bg-stone-50 text-left text-xs uppercase text-slate-500"><th v-for="key in keys" :key="key" class="px-3 py-3">{{ labelFor(key) }}</th><th v-if="!readonly || resource === 'stock-movements'" class="px-3 py-3">Aksi</th></tr></thead>
                     <tbody>
                         <tr v-for="row in rowList" :key="row.id" class="border-b last:border-0">
                             <td v-for="key in keys" :key="key" class="max-w-xs truncate px-3 py-3">{{ display(row, key) }}</td>

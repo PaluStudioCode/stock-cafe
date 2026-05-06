@@ -11,7 +11,7 @@ const verificationLinkSent = computed(() => props.status === 'verification-link-
 
 <template>
     <GuestLayout>
-        <Head title="Email Verification" />
+        <Head title="Verifikasi Email" />
 
         <div class="mb-5">
             <h1 class="text-xl font-bold text-slate-900">Verifikasi Email</h1>
@@ -27,7 +27,7 @@ const verificationLinkSent = computed(() => props.status === 'verification-link-
                 <button class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60" :disabled="form.processing">
                     {{ form.processing ? 'Mengirim...' : 'Kirim Ulang' }}
                 </button>
-                <Link :href="route('logout')" method="post" as="button" class="text-sm font-medium text-orange-700 hover:text-orange-900">Logout</Link>
+                <Link :href="route('logout')" method="post" as="button" class="text-sm font-medium text-orange-700 hover:text-orange-900">Keluar</Link>
             </div>
         </form>
     </GuestLayout>

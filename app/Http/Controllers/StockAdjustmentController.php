@@ -7,6 +7,7 @@ use App\Models\StockAdjustment;
 use App\Models\StockAdjustmentItem;
 use App\Services\StockService;
 use App\Support\CafeStock;
+use App\Support\CafeStockMath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -43,18 +44,18 @@ class StockAdjustmentController extends Controller
             }
         });
 
-        return back()->with('success', 'Draft adjustment dibuat.');
+        return back()->with('success', 'Draf penyesuaian stok dibuat.');
     }
 
     public function update(Request $request, StockAdjustment $stockAdjustment)
     {
-        abort_unless($stockAdjustment->status === 'draft', 422, 'Stock adjustment approved tidak dapat diedit langsung.');
+        abort_unless($stockAdjustment->status === 'draft', 422, 'Penyesuaian stok yang sudah disetujui tidak dapat diedit langsung.');
 
         $data = $this->validated($request);
 
         DB::transaction(function () use ($data, $stockAdjustment) {
             $stockAdjustment = StockAdjustment::lockForUpdate()->findOrFail($stockAdjustment->id);
-            abort_unless($stockAdjustment->status === 'draft', 422, 'Stock adjustment approved tidak dapat diedit langsung.');
+            abort_unless($stockAdjustment->status === 'draft', 422, 'Penyesuaian stok yang sudah disetujui tidak dapat diedit langsung.');
 
             $stockAdjustment->update([
                 'adjustment_date' => $data['adjustment_date'] ?? now(),
@@ -67,7 +68,7 @@ class StockAdjustmentController extends Controller
             }
         });
 
-        return back()->with('success', 'Draft adjustment diperbarui.');
+        return back()->with('success', 'Draf penyesuaian stok diperbarui.');
     }
 
     public function approve(StockAdjustment $stockAdjustment, StockService $stock)
@@ -78,7 +79,7 @@ class StockAdjustmentController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Adjustment disetujui dan movement dibuat.');
+        return back()->with('success', 'Penyesuaian stok disetujui dan pergerakan stok dibuat.');
     }
 
     public function cancel(StockAdjustment $stockAdjustment, StockService $stock)
@@ -89,7 +90,7 @@ class StockAdjustmentController extends Controller
             return back()->withErrors(['stock' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Adjustment dibatalkan.');
+        return back()->with('success', 'Penyesuaian stok dibatalkan.');
     }
 
     private function validated(Request $request): array
@@ -113,7 +114,7 @@ class StockAdjustmentController extends Controller
             'ingredient_id' => $ingredient->id,
             'system_stock' => $systemStock,
             'counted_stock' => $item['counted_stock'],
-            'difference' => round((float) $item['counted_stock'] - $systemStock, 3),
+            'difference' => CafeStockMath::stockDifference($systemStock, $item['counted_stock']),
             'notes' => $item['notes'] ?? null,
         ]);
     }
